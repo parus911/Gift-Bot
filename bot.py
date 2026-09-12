@@ -1,8 +1,18 @@
+```python
 import io
 import math
 import random
+import os
+
 from PIL import Image, ImageDraw, ImageFont
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputFile,
+)
+
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -10,17 +20,15 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# =========================
-# НАСТРОЙКИ
-# =========================
 
-import os
+# =========================================================
+# НАСТРОЙКИ
+# =========================================================
 
 TOKEN = os.environ["BOT_TOKEN"]
 
-GIF_DURATION = 80
+GIF_DURATION = 70
 
-# Подарки на колесе
 GIFTS = [
     "🎁 Надувная лодка для рыбалки",
     "🎮 Боевой пропуск в Fortnite",
@@ -32,21 +40,16 @@ GIFTS = [
     "💵 10000€",
 ]
 
-# Если хочешь гарантированно получить определённый подарок:
-# укажи здесь его название.
-#
-# Например:
-# FORCED_GIFT = "💰 50 €"
-#
-# Если хочешь обычное случайное колесо:
+# Подарок, на котором колесо гарантированно остановится.
+# Чтобы сделать случайный подарок:
 # FORCED_GIFT = None
 
 FORCED_GIFT = "🎁 Незабываемое совместное путешествие"
 
 
-# =========================
+# =========================================================
 # ШРИФТ
-# =========================
+# =========================================================
 
 def get_font(size):
     paths = [
@@ -57,17 +60,17 @@ def get_font(size):
     for path in paths:
         try:
             return ImageFont.truetype(path, size)
-        except:
+        except Exception:
             pass
 
     return ImageFont.load_default()
 
 
-# =========================
+# =========================================================
 # СОЗДАНИЕ КОЛЕСА
-# =========================
+# =========================================================
 
-def create_wheel(angle, selected_index=None):
+def create_wheel(angle):
     size = 800
     center = size // 2
     radius = 300
@@ -91,6 +94,7 @@ def create_wheel(angle, selected_index=None):
 
     # Колесо
     for i, gift in enumerate(GIFTS):
+
         start = angle + i * segment
         end = start + segment
 
@@ -105,23 +109,32 @@ def create_wheel(angle, selected_index=None):
             end=end,
             fill=colors[i % len(colors)],
             outline="white",
-            width=4,
+            width=5,
         )
 
-        # Текст
+        # Положение текста
         middle = math.radians(start + segment / 2)
 
-        text_x = center + math.cos(middle) * 205
-        text_y = center + math.sin(middle) * 205
+        text_x = center + math.cos(middle) * 200
+        text_y = center + math.sin(middle) * 200
 
-        font = get_font(24)
+        font = get_font(20)
 
-        bbox = draw.textbbox((0, 0), gift, font=font)
+        bbox = draw.textbbox(
+            (0, 0),
+            gift,
+            font=font
+        )
+
         tw = bbox[2] - bbox[0]
         th = bbox[3] - bbox[1]
 
+        # Текст
         draw.text(
-            (text_x - tw / 2, text_y - th / 2),
+            (
+                text_x - tw / 2,
+                text_y - th / 2
+            ),
             gift,
             fill="black",
             font=font,
@@ -137,26 +150,41 @@ def create_wheel(angle, selected_index=None):
         ),
         fill="white",
         outline="black",
-        width=4,
+        width=5,
     )
 
-    # Стрелка
+    # Центральная точка
+    draw.ellipse(
+        (
+            center - 10,
+            center - 10,
+            center + 10,
+            center + 10,
+        ),
+        fill="black",
+    )
+
+    # Стрелка сверху
     arrow = [
-        (center, 25),
-        (center - 30, 90),
-        (center + 30, 90),
+        (center, 15),
+        (center - 35, 90),
+        (center + 35, 90),
     ]
 
-    draw.polygon(arrow, fill="black")
+    draw.polygon(
+        arrow,
+        fill="black"
+    )
 
     return image
 
 
-# =========================
-# ГЕНЕРАЦИЯ GIF
-# =========================
+# =========================================================
+# СОЗДАНИЕ АНИМАЦИИ
+# =========================================================
 
 def create_spin_gif(target_index):
+
     frames = []
 
     count = len(GIFTS)
@@ -165,8 +193,8 @@ def create_spin_gif(target_index):
     # Центр нужного сектора
     target_center = target_index * segment + segment / 2
 
-    # Несколько полных оборотов
-    rotations = random.randint(5, 7)
+    # Количество оборотов
+    rotations = random.randint(6, 8)
 
     # Финальный угол
     final_angle = (
@@ -175,17 +203,26 @@ def create_spin_gif(target_index):
         + rotations * 360
     )
 
-    frame_count = 45
+    # Больше кадров = плавнее
+    frame_count = 70
 
     for i in range(frame_count):
+
         progress = i / (frame_count - 1)
 
-        # Плавное замедление
-        eased = 1 - (1 - progress) ** 3
+        # Плавное ускорение/замедление
+        eased = 1 - (1 - progress) ** 4
 
         angle = final_angle * eased
 
         frame = create_wheel(angle)
+
+        # Важно для корректного GIF
+        frame = frame.convert(
+            "P",
+            palette=Image.Palette.ADAPTIVE
+        )
+
         frames.append(frame)
 
     output = io.BytesIO()
@@ -197,6 +234,8 @@ def create_spin_gif(target_index):
         append_images=frames[1:],
         duration=GIF_DURATION,
         loop=0,
+        optimize=False,
+        disposal=2,
     )
 
     output.seek(0)
@@ -204,16 +243,19 @@ def create_spin_gif(target_index):
     return output
 
 
-# =========================
-# КОМАНДА /START
-# =========================
+# =========================================================
+# /START
+# =========================================================
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     keyboard = [
         [
             InlineKeyboardButton(
-                "🎡 Крутить колесо!",
+                "🎡 КРУТИТЬ КОЛЕСО!",
                 callback_data="spin"
             )
         ]
@@ -227,13 +269,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# =========================
-# КНОПКА КОЛЕСА
-# =========================
+# =========================================================
+# ВРАЩЕНИЕ
+# =========================================================
 
-async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def spin(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     query = update.callback_query
+
     await query.answer()
 
     # Выбираем подарок
@@ -244,12 +290,19 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     gift = GIFTS[target_index]
 
-    # Создаём анимацию
+    # Создаём GIF
     gif = create_spin_gif(target_index)
 
-    # Отправляем колесо
+    # ВАЖНО:
+    # Передаём Telegram имя файла
+    animation = InputFile(
+        gif,
+        filename="wheel.gif"
+    )
+
+    # Отправляем анимацию
     await query.message.reply_animation(
-        animation=gif,
+        animation=animation,
         caption="🎡 Колесо вращается...\n\n"
                 "Куда же оно остановится? 👀"
     )
@@ -258,33 +311,46 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
             InlineKeyboardButton(
-                "🎡 Крутить ещё раз",
+                "🎡 КРУТИТЬ ЕЩЁ РАЗ",
                 callback_data="spin"
             )
         ]
     ]
 
     await query.message.reply_text(
-        f"🎉 **КОЛЕСО ОСТАНОВИЛОСЬ!** 🎉\n\n"
-        f"🏆 Твой подарок:\n\n"
-        f"🎁 **{gift}**\n\n"
-        f"Поздравляем! 🥳",
-        parse_mode="Markdown",
+        f"🎉 КОЛЕСО ОСТАНОВИЛОСЬ! 🎉\n\n"
+        f"🏆 ТВОЙ ПОДАРОК:\n\n"
+        f"🎁 {gift}\n\n"
+        f"🥳 ПОЗДРАВЛЯЕМ!",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
 
-# =========================
+# =========================================================
 # ЗАПУСК
-# =========================
+# =========================================================
 
 def main():
 
-    app = Application.builder().token(TOKEN).build()
+    app = (
+        Application
+        .builder()
+        .token(TOKEN)
+        .build()
+    )
 
-    app.add_handler(CommandHandler("start", start))
     app.add_handler(
-        CallbackQueryHandler(spin, pattern="^spin$")
+        CommandHandler(
+            "start",
+            start
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            spin,
+            pattern="^spin$"
+        )
     )
 
     print("Gift-Bot запущен!")
@@ -294,3 +360,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
