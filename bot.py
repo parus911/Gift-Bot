@@ -1,7 +1,6 @@
 import io
 import math
 import os
-import random
 import asyncio
 
 from PIL import Image, ImageDraw, ImageFont
@@ -10,16 +9,13 @@ from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    InputFile,
 )
-
 from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
     ContextTypes,
 )
-
 from telegram.request import HTTPXRequest
 
 
@@ -29,39 +25,56 @@ from telegram.request import HTTPXRequest
 
 TOKEN = os.environ["BOT_TOKEN"]
 
-# GIF стал легче
 GIF_DURATION = 65
 GIF_FRAMES = 72
+
+WHEEL_SIZE = 500
+
+GIF_FILE = "wheel.gif"
+
+GIF_DATA = None
+GIF_READY = False
+
+
+# ============================================================
+# ПОДАРКИ
+# ============================================================
 
 GIFTS = [
     "🎁 Надувная лодка для рыбалки",
     "🎮 Боевой пропуск в Fortnite",
-    "🍕 Сет из AmSushi",
-    "💰 200 €",
-    "🍺 100 литров Aperol Spritz",
-    "🎧 Билет в караоке",
-    "✈️ Незабываемое совместное путешествие",
-    "💵 10000 €",
+    "💎 Подарок-сюрприз от любимого",
+    "🍹 100 литров Aperol Spritz",
+    "🎤 Билет в караоке",
+    "✈️ Путешествие в неизвестную страну",
+    "💵 10 000 €",
+    "👑 День, когда Любовь выбирает всё",
 ]
 
-# Подарок, который реально выпадет
-FORCED_GIFT = "✈️ Незабываемое совместное путешествие"
+# Главный подарок
+FORCED_GIFT = "✈️ Путешествие в неизвестную страну"
 
 
 # ============================================================
 # ШРИФТ
 # ============================================================
 
-def get_font(size):
+def get_font(size, bold=False):
 
-    fonts = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    ]
+    if bold:
+        paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+    else:
+        paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        ]
 
-    for font_path in fonts:
-        if os.path.exists(font_path):
-            return ImageFont.truetype(font_path, size)
+    for path in paths:
+        if os.path.exists(path):
+            return ImageFont.truetype(path, size)
 
     return ImageFont.load_default()
 
@@ -73,12 +86,13 @@ def get_font(size):
 def welcome_text():
 
     return (
-        "🎉🎂 **С ДНЁМ РОЖДЕНИЯ, ЛЮБОВЬ!** 🎂🎉\n\n"
+        "🎉🎂 <b>С ДНЁМ РОЖДЕНИЯ, ЛЮБОВЬ!</b> 🎂🎉\n\n"
         "❤️ Сегодня твой особенный день!\n\n"
-        "И мы приготовили для тебя небольшой сюрприз... 🎁\n\n"
-        "На колесе — несколько подарков, "
-        "но какой именно достанется тебе? 👀\n\n"
-        "✨ **Готова узнать?** ✨"
+        "А значит, пришло время узнать,\n"
+        "какой подарок приготовил для тебя\n"
+        "твой любимый человек. 🎁\n\n"
+        "Но подарок определит...\n"
+        "<b>КОЛЕСО УДАЧИ! 🎡</b>"
     )
 
 
@@ -88,18 +102,19 @@ def welcome_text():
 
 def gifts_text():
 
-    text = "🎁 **ВОЗМОЖНЫЕ ПОДАРКИ**\n\n"
-
-    for i, gift in enumerate(GIFTS, 1):
-        text += f"**{i}.** {gift}\n"
-
-    text += (
-        "\n❤️ Но какой подарок выберет колесо — "
-        "узнаем только после вращения!\n\n"
-        "🎡 **Ну что, Любовь, крутим?**"
+    return (
+        "🎁 <b>ВОТ ЧТО МОЖЕТ ТЕБЯ ЖДАТЬ:</b>\n\n"
+        "▫️ 🎁 Надувная лодка для рыбалки\n"
+        "▫️ 🎮 Боевой пропуск в Fortnite\n"
+        "▫️ 💎 Подарок-сюрприз от любимого\n"
+        "▫️ 🍹 100 литров Aperol Spritz\n"
+        "▫️ 🎤 Билет в караоке\n"
+        "▫️ ✈️ Путешествие в неизвестную страну\n"
+        "▫️ 💵 10 000 €\n"
+        "▫️ 👑 День, когда Любовь выбирает всё\n\n"
+        "❤️ Но какой именно подарок достанется тебе — "
+        "решит судьба!"
     )
-
-    return text
 
 
 # ============================================================
@@ -108,67 +123,47 @@ def gifts_text():
 
 def create_wheel(angle=0):
 
-    SIZE = 500
-    CENTER = SIZE // 2
-    RADIUS = 205
+    size = WHEEL_SIZE
 
     image = Image.new(
         "RGB",
-        (SIZE, SIZE),
-        (15, 15, 25)
+        (size, size),
+        "#FFF5E6",
     )
 
     draw = ImageDraw.Draw(image)
 
-    # --------------------------------------------------------
-    # Внешнее кольцо
-    # --------------------------------------------------------
-
-    draw.ellipse(
-        (
-            CENTER - RADIUS - 12,
-            CENTER - RADIUS - 12,
-            CENTER + RADIUS + 12,
-            CENTER + RADIUS + 12,
-        ),
-        fill=(255, 215, 80),
-        outline=(255, 255, 255),
-        width=4,
-    )
-
-    # --------------------------------------------------------
-    # Цвета
-    # --------------------------------------------------------
+    center = size // 2
+    radius = 220
 
     colors = [
-        (255, 82, 82),
-        (255, 164, 62),
-        (255, 215, 70),
-        (76, 205, 115),
-        (65, 155, 255),
-        (111, 91, 255),
-        (215, 83, 255),
-        (255, 93, 168),
+        "#FF6B6B",
+        "#FFD93D",
+        "#6BCB77",
+        "#4D96FF",
+        "#C77DFF",
+        "#FF922B",
+        "#20C997",
+        "#F06595",
     ]
 
-    count = len(GIFTS)
-    sector = 360 / count
+    sector_angle = 360 / len(GIFTS)
 
     # --------------------------------------------------------
-    # Сектора
+    # СЕКТОРА
     # --------------------------------------------------------
 
-    for i in range(count):
+    for i in range(len(GIFTS)):
 
-        start = angle + i * sector
-        end = start + sector
+        start = i * sector_angle + angle - 90
+        end = start + sector_angle
 
         draw.pieslice(
             (
-                CENTER - RADIUS,
-                CENTER - RADIUS,
-                CENTER + RADIUS,
-                CENTER + RADIUS,
+                center - radius,
+                center - radius,
+                center + radius,
+                center + radius,
             ),
             start=start,
             end=end,
@@ -177,148 +172,126 @@ def create_wheel(angle=0):
             width=3,
         )
 
-    # --------------------------------------------------------
-    # Подписи
-    # --------------------------------------------------------
+        # Короткие названия для колеса
+        names = [
+            "ЛОДКА",
+            "FORTNITE",
+            "СЮРПРИЗ",
+            "APEROL",
+            "КАРАОКЕ",
+            "ПУТЕШЕСТВИЕ",
+            "10 000 €",
+            "ЛЮБОВЬ\nВЫБИРАЕТ ВСЁ",
+        ]
 
-    font = get_font(15)
+        text = names[i]
 
-    for i, gift in enumerate(GIFTS):
+        font = get_font(15, bold=True)
 
-        middle = angle + i * sector + sector / 2
+        middle = math.radians(
+            (start + end) / 2
+        )
 
-        rad = math.radians(middle)
+        text_radius = 155
 
-        text_radius = 138
+        x = center + math.cos(middle) * text_radius
+        y = center + math.sin(middle) * text_radius
 
-        x = CENTER + math.cos(rad) * text_radius
-        y = CENTER + math.sin(rad) * text_radius
-
-        short_text = gift
-
-        if len(short_text) > 19:
-            short_text = short_text[:17] + "…"
-
-        bbox = draw.textbbox(
+        bbox = draw.multiline_textbbox(
             (0, 0),
-            short_text,
+            text,
             font=font,
+            align="center",
         )
 
         tw = bbox[2] - bbox[0]
         th = bbox[3] - bbox[1]
 
-        text_img = Image.new(
-            "RGBA",
-            (tw + 20, th + 20),
-            (0, 0, 0, 0),
-        )
-
-        text_draw = ImageDraw.Draw(text_img)
-
-        text_draw.text(
-            (10, 10),
-            short_text,
+        draw.multiline_text(
+            (
+                x - tw / 2,
+                y - th / 2,
+            ),
+            text,
             font=font,
             fill="white",
             stroke_width=2,
             stroke_fill="black",
-        )
-
-        text_img = text_img.rotate(
-            -middle,
-            expand=True,
-            resample=Image.Resampling.BICUBIC,
-        )
-
-        image.paste(
-            text_img,
-            (
-                int(x - text_img.width / 2),
-                int(y - text_img.height / 2),
-            ),
-            text_img,
+            align="center",
         )
 
     # --------------------------------------------------------
-    # Центр
+    # ВНЕШНЕЕ КОЛЬЦО
     # --------------------------------------------------------
 
     draw.ellipse(
         (
-            CENTER - 48,
-            CENTER - 48,
-            CENTER + 48,
-            CENTER + 48,
+            center - radius,
+            center - radius,
+            center + radius,
+            center + radius,
         ),
-        fill=(25, 25, 35),
-        outline=(255, 215, 80),
+        outline="#333333",
         width=6,
     )
 
+    # --------------------------------------------------------
+    # ЦЕНТР КОЛЕСА
+    # --------------------------------------------------------
+
+    hub_radius = 55
+
     draw.ellipse(
         (
-            CENTER - 13,
-            CENTER - 13,
-            CENTER + 13,
-            CENTER + 13,
+            center - hub_radius,
+            center - hub_radius,
+            center + hub_radius,
+            center + hub_radius,
         ),
-        fill=(255, 215, 80),
+        fill="white",
+        outline="#333333",
+        width=5,
+    )
+
+    font = get_font(16, bold=True)
+
+    text = "КОЛЕСО\nУДАЧИ"
+
+    bbox = draw.multiline_textbbox(
+        (0, 0),
+        text,
+        font=font,
+        align="center",
+    )
+
+    tw = bbox[2] - bbox[0]
+    th = bbox[3] - bbox[1]
+
+    draw.multiline_text(
+        (
+            center - tw / 2,
+            center - th / 2,
+        ),
+        text,
+        font=font,
+        fill="#222222",
+        align="center",
     )
 
     # --------------------------------------------------------
-    # Стрелка
+    # СТРЕЛКА
     # --------------------------------------------------------
 
     arrow = [
-        (CENTER, 32),
-        (CENTER - 25, 2),
-        (CENTER + 25, 2),
+        (center, 12),
+        (center - 21, 52),
+        (center + 21, 52),
     ]
 
     draw.polygon(
         arrow,
-        fill=(255, 215, 80),
-        outline="white",
-    )
-
-    draw.line(
-        [
-            (CENTER, 32),
-            (CENTER - 25, 2),
-            (CENTER + 25, 2),
-            (CENTER, 32),
-        ],
-        fill="white",
-        width=3,
-    )
-
-    # --------------------------------------------------------
-    # Надпись
-    # --------------------------------------------------------
-
-    title_font = get_font(19)
-
-    title = "КОЛЕСО УДАЧИ"
-
-    bbox = draw.textbbox(
-        (0, 0),
-        title,
-        font=title_font,
-    )
-
-    tw = bbox[2] - bbox[0]
-
-    draw.text(
-        (
-            CENTER - tw / 2,
-            472,
-        ),
-        title,
-        font=title_font,
-        fill=(255, 215, 80),
-        stroke_width=2,
-        stroke_fill="black",
+        fill="#E63946",
+        outline="#7F1D1D",
     )
 
     return image
@@ -332,35 +305,36 @@ def create_spin_gif(target_index):
 
     frames = []
 
-    rotations = random.randint(7, 9)
+    sector_angle = 360 / len(GIFTS)
 
-    sector = 360 / len(GIFTS)
-
+    # Вычисляем угол, при котором нужный сектор
+    # окажется ровно под верхней стрелкой
     target_angle = (
         360
-        - (target_index * sector + sector / 2)
+        - (
+            target_index * sector_angle
+            + sector_angle / 2
+        )
+    )
+
+    # 8 полных оборотов
+    total_rotation = (
+        360 * 8
+        + target_angle
     )
 
     for frame in range(GIF_FRAMES):
 
         progress = frame / (GIF_FRAMES - 1)
 
-        # Очень плавное замедление
-        eased = 1 - (1 - progress) ** 4
+        # Плавное замедление к концу
+        eased = 1 - (1 - progress) ** 3
 
-        angle = (
-            rotations * 360 * eased
-            + target_angle
-        )
+        angle = total_rotation * eased
 
-        image = create_wheel(angle)
+        frame_image = create_wheel(angle)
 
-        frames.append(
-            image.convert(
-                "P",
-                palette=Image.Palette.ADAPTIVE
-            )
-        )
+        frames.append(frame_image)
 
     output = io.BytesIO()
 
@@ -370,18 +344,245 @@ def create_spin_gif(target_index):
         save_all=True,
         append_images=frames[1:],
         duration=GIF_DURATION,
-        loop=0,
+        loop=1,
         optimize=True,
-        disposal=2,
     )
 
     output.seek(0)
 
-    return output
+    return output.getvalue()
 
 
 # ============================================================
-# START
+# ФИНАЛЬНЫЙ ЭКРАН-БИЛЕТ
+# ============================================================
+
+def create_final_ticket():
+
+    width = 800
+    height = 1050
+
+    image = Image.new(
+        "RGB",
+        (width, height),
+        "#FFF8EE",
+    )
+
+    draw = ImageDraw.Draw(image)
+
+    # --------------------------------------------------------
+    # РАМКА
+    # --------------------------------------------------------
+
+    draw.rectangle(
+        (35, 35, width - 35, height - 35),
+        outline="#222222",
+        width=5,
+    )
+
+    draw.rectangle(
+        (55, 55, width - 55, height - 55),
+        outline="#C9A227",
+        width=3,
+    )
+
+    # --------------------------------------------------------
+    # ШРИФТЫ
+    # --------------------------------------------------------
+
+    font_big = get_font(48, bold=True)
+    font_title = get_font(38, bold=True)
+    font_medium = get_font(30, bold=True)
+    font_small = get_font(26)
+    font_instruction = get_font(25)
+
+    # --------------------------------------------------------
+    # ФУНКЦИЯ ЦЕНТРИРОВАННОГО ТЕКСТА
+    # --------------------------------------------------------
+
+    def centered(
+        text,
+        y,
+        font,
+        fill="#222222",
+    ):
+
+        bbox = draw.multiline_textbbox(
+            (0, 0),
+            text,
+            font=font,
+            align="center",
+        )
+
+        tw = bbox[2] - bbox[0]
+
+        draw.multiline_text(
+            (
+                width / 2 - tw / 2,
+                y,
+            ),
+            text,
+            font=font,
+            fill=fill,
+            align="center",
+        )
+
+    # --------------------------------------------------------
+    # ЗАГОЛОВОК
+    # --------------------------------------------------------
+
+    centered(
+        "ЛЮБОВЬ!",
+        95,
+        font_big,
+        "#B22222",
+    )
+
+    centered(
+        "ТЫ ВЫИГРАЛА",
+        165,
+        font_title,
+    )
+
+    centered(
+        "ПУТЕШЕСТВИЕ",
+        220,
+        font_title,
+        "#C9A227",
+    )
+
+    centered(
+        "В НЕИЗВЕСТНУЮ СТРАНУ",
+        275,
+        font_medium,
+    )
+
+    # --------------------------------------------------------
+    # РАЗДЕЛИТЕЛЬ
+    # --------------------------------------------------------
+
+    draw.line(
+        (110, 345, 690, 345),
+        fill="#C9A227",
+        width=4,
+    )
+
+    # --------------------------------------------------------
+    # МЕСТО НАЗНАЧЕНИЯ
+    # --------------------------------------------------------
+
+    centered(
+        "МЕСТО НАЗНАЧЕНИЯ",
+        390,
+        font_small,
+    )
+
+    centered(
+        "СЕКРЕТНО",
+        435,
+        font_big,
+        "#B22222",
+    )
+
+    centered(
+        "🤫",
+        505,
+        font_medium,
+    )
+
+    # --------------------------------------------------------
+    # ДАТА
+    # --------------------------------------------------------
+
+    centered(
+        "ДАТА ВЫЛЕТА",
+        585,
+        font_small,
+    )
+
+    centered(
+        "29 ОКТЯБРЯ",
+        625,
+        font_big,
+        "#B22222",
+    )
+
+    # --------------------------------------------------------
+    # ВРЕМЯ
+    # --------------------------------------------------------
+
+    centered(
+        "ВРЕМЯ ВЫЛЕТА",
+        705,
+        font_small,
+    )
+
+    centered(
+        "06:00",
+        745,
+        font_big,
+        "#B22222",
+    )
+
+    # --------------------------------------------------------
+    # ИНСТРУКЦИЯ
+    # --------------------------------------------------------
+
+    draw.line(
+        (110, 830, 690, 830),
+        fill="#C9A227",
+        width=3,
+    )
+
+    centered(
+        "ИНСТРУКЦИЯ",
+        855,
+        font_medium,
+        "#C9A227",
+    )
+
+    centered(
+        "Собрать чемодан\n"
+        "Не спрашивать, куда летим\n"
+        "Довериться любимому",
+        900,
+        font_instruction,
+    )
+
+    return image
+
+
+# ============================================================
+# ПРЕДВАРИТЕЛЬНАЯ ГЕНЕРАЦИЯ GIF
+# ============================================================
+
+async def prepare_gif():
+
+    global GIF_DATA
+    global GIF_READY
+
+    print("🎡 Генерируем GIF колеса...")
+
+    target_index = GIFTS.index(
+        FORCED_GIFT
+    )
+
+    GIF_DATA = await asyncio.to_thread(
+        create_spin_gif,
+        target_index,
+    )
+
+    GIF_READY = True
+
+    print(
+        f"✅ GIF готов! "
+        f"Размер: "
+        f"{len(GIF_DATA) / 1024 / 1024:.2f} MB"
+    )
+
+
+# ============================================================
+# /START
 # ============================================================
 
 async def start(
@@ -400,8 +601,10 @@ async def start(
 
     await update.message.reply_text(
         welcome_text(),
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        ),
     )
 
 
@@ -416,7 +619,6 @@ async def show_gifts(
 
     query = update.callback_query
 
-    # Отвечаем Telegram сразу
     try:
         await query.answer()
     except Exception:
@@ -433,13 +635,15 @@ async def show_gifts(
 
     await query.message.reply_text(
         gifts_text(),
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        ),
     )
 
 
 # ============================================================
-# ВРАЩЕНИЕ
+# ВРАЩЕНИЕ КОЛЕСА
 # ============================================================
 
 async def spin(
@@ -447,10 +651,13 @@ async def spin(
     context: ContextTypes.DEFAULT_TYPE,
 ):
 
+    global GIF_READY
+    global GIF_DATA
+
     query = update.callback_query
 
     # --------------------------------------------------------
-    # Сразу отвечаем Telegram
+    # СРАЗУ ОТВЕЧАЕМ TELEGRAM
     # --------------------------------------------------------
 
     try:
@@ -461,10 +668,12 @@ async def spin(
         pass
 
     # --------------------------------------------------------
-    # Защита от повторного нажатия
+    # ЗАЩИТА ОТ ДВОЙНОГО НАЖАТИЯ
     # --------------------------------------------------------
 
-    if context.user_data.get("spinning"):
+    if context.user_data.get(
+        "spinning"
+    ):
         return
 
     context.user_data["spinning"] = True
@@ -472,55 +681,68 @@ async def spin(
     try:
 
         # ----------------------------------------------------
-        # Сообщение
+        # ПРОВЕРКА ГОТОВНОСТИ GIF
         # ----------------------------------------------------
 
-        await query.message.reply_text(
-            "🎡 **ЛЮБОВЬ, ВНИМАНИЕ!**\n\n"
-            "Колесо сейчас определит твой подарок...\n\n"
-            "🔥 **ПОЕХАЛИ!** 🔥",
-            parse_mode="Markdown",
+        if not GIF_READY or GIF_DATA is None:
+
+            await query.message.reply_text(
+                "⏳ <b>Колесо ещё готовится...</b>\n\n"
+                "Подожди несколько секунд и попробуй снова! 🎡",
+                parse_mode="HTML",
+            )
+
+            return
+
+        # ----------------------------------------------------
+        # ОБРАТНЫЙ ОТСЧЁТ
+        # ----------------------------------------------------
+
+        countdown = await query.message.reply_text(
+            "🎁 <b>ПОДГОТАВЛИВАЕМ СЮРПРИЗ...</b>\n\n"
+            "⏳ <b>3️⃣</b>",
+            parse_mode="HTML",
+        )
+
+        await asyncio.sleep(1)
+
+        await countdown.edit_text(
+            "🎁 <b>ПОДГОТАВЛИВАЕМ СЮРПРИЗ...</b>\n\n"
+            "⏳ <b>2️⃣</b>",
+            parse_mode="HTML",
+        )
+
+        await asyncio.sleep(1)
+
+        await countdown.edit_text(
+            "🎁 <b>ПОДГОТАВЛИВАЕМ СЮРПРИЗ...</b>\n\n"
+            "⏳ <b>1️⃣</b>",
+            parse_mode="HTML",
+        )
+
+        await asyncio.sleep(1)
+
+        await countdown.edit_text(
+            "🎡 <b>ПОЕХАЛИ! 🔥</b>",
+            parse_mode="HTML",
         )
 
         # ----------------------------------------------------
-        # Нужный подарок
+        # ОТПРАВЛЯЕМ ГОТОВЫЙ GIF
         # ----------------------------------------------------
 
-        target_index = GIFTS.index(
-            FORCED_GIFT
+        gif_stream = io.BytesIO(
+            GIF_DATA
         )
 
-        # ----------------------------------------------------
-        # ВАЖНО:
-        # создаём GIF в отдельном потоке,
-        # чтобы Telegram не зависал
-        # ----------------------------------------------------
-
-        gif = await asyncio.to_thread(
-            create_spin_gif,
-            target_index
-        )
-
-        animation = InputFile(
-            gif,
-            filename="birthday_wheel.gif",
-        )
-
-        # ----------------------------------------------------
-        # Отправляем GIF
-        # ----------------------------------------------------
+        gif_stream.name = GIF_FILE
 
         await query.message.reply_animation(
-            animation=animation,
-            caption=(
-                "🎡 **КОЛЕСО ВРАЩАЕТСЯ...**\n\n"
-                "👀 Куда же оно остановится?"
-            ),
-            parse_mode="Markdown",
+            animation=gif_stream,
         )
 
         # ----------------------------------------------------
-        # Ждём окончания
+        # ЖДЁМ ОКОНЧАНИЯ АНИМАЦИИ
         # ----------------------------------------------------
 
         animation_time = (
@@ -528,49 +750,60 @@ async def spin(
         ) / 1000
 
         await asyncio.sleep(
-            animation_time + 1
+            animation_time + 0.5
         )
 
         # ----------------------------------------------------
-        # Напряжение
+        # СОЗДАЁМ ФИНАЛЬНЫЙ БИЛЕТ
         # ----------------------------------------------------
 
-        await query.message.reply_text(
-            "😱 **ОНО ОСТАНОВИЛОСЬ!**\n\n"
-            "🥁 🥁 🥁\n\n"
-            "✨ Сейчас узнаем, что тебе досталось...",
-            parse_mode="Markdown",
+        ticket_image = create_final_ticket()
+
+        ticket_stream = io.BytesIO()
+
+        ticket_image.save(
+            ticket_stream,
+            format="PNG",
         )
 
-        await asyncio.sleep(2)
+        ticket_stream.seek(0)
 
-        # ----------------------------------------------------
-        # РЕЗУЛЬТАТ
-        # ----------------------------------------------------
-
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    "🎡 КРУТИТЬ ЕЩЁ РАЗ",
-                    callback_data="spin",
-                )
-            ]
-        ]
-
-        await query.message.reply_text(
-            "🎉✨🎊🥳🎁✨🎉\n\n"
-            "❤️ **ЛЮБОВЬ, ПОЗДРАВЛЯЕМ!** ❤️\n\n"
-            "🏆 Сегодня фортуна выбрала именно тебя!\n\n"
-            "🎁 **ТВОЙ ПОДАРОК:**\n\n"
-            "✈️ **НЕЗАБЫВАЕМОЕ\n"
-            "СОВМЕСТНОЕ ПУТЕШЕСТВИЕ** ❤️\n\n"
-            "🎉✨🎊🥳🎁✨🎉\n\n"
-            "С Днём рождения, Любовь! ❤️\n\n"
-            "Пусть этот подарок станет одним "
-            "из самых ярких воспоминаний! 🥰",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard),
+        ticket_stream.name = (
+            "birthday_ticket.png"
         )
+
+        # ----------------------------------------------------
+        # ОТПРАВЛЯЕМ ФИНАЛ
+        # ----------------------------------------------------
+
+        await query.message.reply_photo(
+            photo=ticket_stream,
+            caption=(
+                "❤️ <b>ЛЮБОВЬ, ПОЗДРАВЛЯЕМ!</b> ❤️\n\n"
+                "Твой главный подарок уже определён.\n\n"
+                "🌍 Страна назначения пока остаётся "
+                "секретом... 🤫\n\n"
+                "🧳 Готовь чемодан!"
+            ),
+            parse_mode="HTML",
+        )
+
+        # Больше никаких кнопок.
+        # Финал завершён.
+
+    except Exception as e:
+
+        print(
+            f"❌ Ошибка во время вращения: {e}"
+        )
+
+        try:
+            await query.message.reply_text(
+                "😢 Что-то пошло не так.\n\n"
+                "Попробуй ещё раз! 🎡"
+            )
+        except Exception:
+            pass
 
     finally:
 
@@ -578,12 +811,22 @@ async def spin(
 
 
 # ============================================================
-# ЗАПУСК
+# POST INIT
+# ============================================================
+
+async def post_init(
+    application: Application,
+):
+
+    await prepare_gif()
+
+
+# ============================================================
+# MAIN
 # ============================================================
 
 def main():
 
-    # Увеличиваем таймауты Telegram API
     request = HTTPXRequest(
         connect_timeout=30,
         read_timeout=60,
@@ -595,13 +838,14 @@ def main():
         Application.builder()
         .token(TOKEN)
         .request(request)
+        .post_init(post_init)
         .build()
     )
 
     app.add_handler(
         CommandHandler(
             "start",
-            start
+            start,
         )
     )
 
@@ -619,12 +863,14 @@ def main():
         )
     )
 
-    print(
-        "🎂 Gift-Bot для Любови запущен!"
-    )
+    print("🤖 Gift-Bot запущен!")
 
     app.run_polling()
 
+
+# ============================================================
+# ЗАПУСК
+# ============================================================
 
 if __name__ == "__main__":
     main()
