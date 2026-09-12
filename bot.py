@@ -25,7 +25,7 @@ from telegram.ext import (
 # НАСТРОЙКИ
 # =========================================================
 
-TOKEN = os.environ["B8295184346:AAHG7eArQwaG1TJWGFaeWl4DjBU76DGtyXo"]
+TOKEN = os.environ["BOT_TOKEN"]
 
 GIF_DURATION = 70
 
