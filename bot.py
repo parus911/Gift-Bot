@@ -1,4 +1,4 @@
-import io
+import os
 import math
 import random
 from PIL import Image, ImageDraw, ImageFont
@@ -14,7 +14,7 @@ from telegram.ext import (
 # НАСТРОЙКИ
 # =========================
 
-TOKEN = "ВСТАВЬ_СЮДА_ТОКЕН_БОТА"
+TOKEN = os.environ["BOT_TOKEN"]
 
 GIF_DURATION = 80
 
