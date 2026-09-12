@@ -20,6 +20,8 @@ from telegram.ext import (
     ContextTypes,
 )
 
+from telegram.request import HTTPXRequest
+
 
 # ============================================================
 # НАСТРОЙКИ
@@ -27,9 +29,10 @@ from telegram.ext import (
 
 TOKEN = os.environ["BOT_TOKEN"]
 
-GIF_DURATION = 55
+# GIF стал легче
+GIF_DURATION = 65
+GIF_FRAMES = 72
 
-# Все возможные подарки
 GIFTS = [
     "🎁 Надувная лодка для рыбалки",
     "🎮 Боевой пропуск в Fortnite",
@@ -41,15 +44,16 @@ GIFTS = [
     "💵 10000 €",
 ]
 
-# Подарок, который действительно выпадет
+# Подарок, который реально выпадет
 FORCED_GIFT = "✈️ Незабываемое совместное путешествие"
 
 
 # ============================================================
-# ШРИФТЫ
+# ШРИФТ
 # ============================================================
 
 def get_font(size):
+
     fonts = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -63,7 +67,7 @@ def get_font(size):
 
 
 # ============================================================
-# ТЕКСТ ПРИВЕТСТВИЯ
+# ПРИВЕТСТВИЕ
 # ============================================================
 
 def welcome_text():
@@ -84,9 +88,7 @@ def welcome_text():
 
 def gifts_text():
 
-    text = (
-        "🎁 **ЧТО МОЖЕТ ВЫПАСТЬ?**\n\n"
-    )
+    text = "🎁 **ВОЗМОЖНЫЕ ПОДАРКИ**\n\n"
 
     for i, gift in enumerate(GIFTS, 1):
         text += f"**{i}.** {gift}\n"
@@ -101,16 +103,15 @@ def gifts_text():
 
 
 # ============================================================
-# КОЛЕСО
+# СОЗДАНИЕ КОЛЕСА
 # ============================================================
 
 def create_wheel(angle=0):
 
-    SIZE = 700
+    SIZE = 500
     CENTER = SIZE // 2
-    RADIUS = 285
+    RADIUS = 205
 
-    # Фон
     image = Image.new(
         "RGB",
         (SIZE, SIZE),
@@ -120,23 +121,23 @@ def create_wheel(angle=0):
     draw = ImageDraw.Draw(image)
 
     # --------------------------------------------------------
-    # Декоративное внешнее кольцо
+    # Внешнее кольцо
     # --------------------------------------------------------
 
     draw.ellipse(
         (
-            CENTER - RADIUS - 18,
-            CENTER - RADIUS - 18,
-            CENTER + RADIUS + 18,
-            CENTER + RADIUS + 18,
+            CENTER - RADIUS - 12,
+            CENTER - RADIUS - 12,
+            CENTER + RADIUS + 12,
+            CENTER + RADIUS + 12,
         ),
         fill=(255, 215, 80),
         outline=(255, 255, 255),
-        width=5,
+        width=4,
     )
 
     # --------------------------------------------------------
-    # Цвета секторов
+    # Цвета
     # --------------------------------------------------------
 
     colors = [
@@ -151,7 +152,6 @@ def create_wheel(angle=0):
     ]
 
     count = len(GIFTS)
-
     sector = 360 / count
 
     # --------------------------------------------------------
@@ -172,16 +172,16 @@ def create_wheel(angle=0):
             ),
             start=start,
             end=end,
-            fill=colors[i % len(colors)],
-            outline=(255, 255, 255),
-            width=4,
+            fill=colors[i],
+            outline="white",
+            width=3,
         )
 
     # --------------------------------------------------------
     # Подписи
     # --------------------------------------------------------
 
-    font = get_font(20)
+    font = get_font(15)
 
     for i, gift in enumerate(GIFTS):
 
@@ -189,16 +189,15 @@ def create_wheel(angle=0):
 
         rad = math.radians(middle)
 
-        text_radius = 195
+        text_radius = 138
 
         x = CENTER + math.cos(rad) * text_radius
         y = CENTER + math.sin(rad) * text_radius
 
-        # Сокращаем длинные названия
         short_text = gift
 
-        if len(short_text) > 23:
-            short_text = short_text[:21] + "…"
+        if len(short_text) > 19:
+            short_text = short_text[:17] + "…"
 
         bbox = draw.textbbox(
             (0, 0),
@@ -211,18 +210,18 @@ def create_wheel(angle=0):
 
         text_img = Image.new(
             "RGBA",
-            (tw + 30, th + 30),
+            (tw + 20, th + 20),
             (0, 0, 0, 0),
         )
 
         text_draw = ImageDraw.Draw(text_img)
 
         text_draw.text(
-            (15, 15),
+            (10, 10),
             short_text,
             font=font,
             fill="white",
-            stroke_width=3,
+            stroke_width=2,
             stroke_fill="black",
         )
 
@@ -242,65 +241,65 @@ def create_wheel(angle=0):
         )
 
     # --------------------------------------------------------
-    # Центральная часть
+    # Центр
     # --------------------------------------------------------
 
     draw.ellipse(
         (
-            CENTER - 70,
-            CENTER - 70,
-            CENTER + 70,
-            CENTER + 70,
+            CENTER - 48,
+            CENTER - 48,
+            CENTER + 48,
+            CENTER + 48,
         ),
         fill=(25, 25, 35),
         outline=(255, 215, 80),
-        width=8,
+        width=6,
     )
 
     draw.ellipse(
         (
-            CENTER - 20,
-            CENTER - 20,
-            CENTER + 20,
-            CENTER + 20,
+            CENTER - 13,
+            CENTER - 13,
+            CENTER + 13,
+            CENTER + 13,
         ),
         fill=(255, 215, 80),
     )
 
     # --------------------------------------------------------
-    # Стрелка сверху
+    # Стрелка
     # --------------------------------------------------------
 
     arrow = [
-        (CENTER, 43),
-        (CENTER - 35, 3),
-        (CENTER + 35, 3),
+        (CENTER, 32),
+        (CENTER - 25, 2),
+        (CENTER + 25, 2),
     ]
 
     draw.polygon(
         arrow,
         fill=(255, 215, 80),
-        outline=(255, 255, 255),
+        outline="white",
     )
 
     draw.line(
         [
-            (CENTER, 43),
-            (CENTER - 35, 3),
-            (CENTER + 35, 3),
-            (CENTER, 43),
+            (CENTER, 32),
+            (CENTER - 25, 2),
+            (CENTER + 25, 2),
+            (CENTER, 32),
         ],
         fill="white",
-        width=4,
+        width=3,
     )
 
     # --------------------------------------------------------
-    # Нижняя надпись
+    # Надпись
     # --------------------------------------------------------
 
-    title_font = get_font(25)
+    title_font = get_font(19)
 
-    title = "🎡 КОЛЕСО УДАЧИ"
+    title = "КОЛЕСО УДАЧИ"
 
     bbox = draw.textbbox(
         (0, 0),
@@ -313,7 +312,7 @@ def create_wheel(angle=0):
     draw.text(
         (
             CENTER - tw / 2,
-            655,
+            472,
         ),
         title,
         font=title_font,
@@ -326,31 +325,27 @@ def create_wheel(angle=0):
 
 
 # ============================================================
-# АНИМАЦИЯ ВРАЩЕНИЯ
+# СОЗДАНИЕ GIF
 # ============================================================
 
 def create_spin_gif(target_index):
 
     frames = []
 
-    total_frames = 105
-
-    # Количество полных оборотов
     rotations = random.randint(7, 9)
 
     sector = 360 / len(GIFTS)
 
-    # Центр нужного сектора
     target_angle = (
         360
         - (target_index * sector + sector / 2)
     )
 
-    for frame in range(total_frames):
+    for frame in range(GIF_FRAMES):
 
-        progress = frame / (total_frames - 1)
+        progress = frame / (GIF_FRAMES - 1)
 
-        # Плавное замедление
+        # Очень плавное замедление
         eased = 1 - (1 - progress) ** 4
 
         angle = (
@@ -376,7 +371,7 @@ def create_spin_gif(target_index):
         append_images=frames[1:],
         duration=GIF_DURATION,
         loop=0,
-        optimize=False,
+        optimize=True,
         disposal=2,
     )
 
@@ -386,7 +381,7 @@ def create_spin_gif(target_index):
 
 
 # ============================================================
-# /START
+# START
 # ============================================================
 
 async def start(
@@ -403,14 +398,10 @@ async def start(
         ]
     ]
 
-    reply_markup = InlineKeyboardMarkup(
-        keyboard
-    )
-
     await update.message.reply_text(
         welcome_text(),
         parse_mode="Markdown",
-        reply_markup=reply_markup,
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
 
@@ -425,7 +416,11 @@ async def show_gifts(
 
     query = update.callback_query
 
-    await query.answer()
+    # Отвечаем Telegram сразу
+    try:
+        await query.answer()
+    except Exception:
+        pass
 
     keyboard = [
         [
@@ -436,19 +431,15 @@ async def show_gifts(
         ]
     ]
 
-    reply_markup = InlineKeyboardMarkup(
-        keyboard
-    )
-
     await query.message.reply_text(
         gifts_text(),
         parse_mode="Markdown",
-        reply_markup=reply_markup,
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
 
 # ============================================================
-# ВРАЩЕНИЕ КОЛЕСА
+# ВРАЩЕНИЕ
 # ============================================================
 
 async def spin(
@@ -458,120 +449,152 @@ async def spin(
 
     query = update.callback_query
 
-    await query.answer()
-
     # --------------------------------------------------------
-    # Определяем нужный сектор
+    # Сразу отвечаем Telegram
     # --------------------------------------------------------
 
-    target_index = GIFTS.index(
-        FORCED_GIFT
-    )
+    try:
+        await query.answer(
+            text="🎡 Запускаем колесо!"
+        )
+    except Exception:
+        pass
 
     # --------------------------------------------------------
-    # Сообщение перед запуском
+    # Защита от повторного нажатия
     # --------------------------------------------------------
 
-    await query.message.reply_text(
-        "🎡 **ЛЮБОВЬ, ВНИМАНИЕ!**\n\n"
-        "Колесо сейчас определит твой подарок...\n\n"
-        "🔥 **ПОЕХАЛИ!** 🔥",
-        parse_mode="Markdown",
-    )
+    if context.user_data.get("spinning"):
+        return
 
-    # --------------------------------------------------------
-    # Создаём GIF
-    # --------------------------------------------------------
+    context.user_data["spinning"] = True
 
-    gif = create_spin_gif(
-        target_index
-    )
+    try:
 
-    animation = InputFile(
-        gif,
-        filename="birthday_wheel.gif",
-    )
+        # ----------------------------------------------------
+        # Сообщение
+        # ----------------------------------------------------
 
-    # --------------------------------------------------------
-    # Отправляем колесо
-    # --------------------------------------------------------
+        await query.message.reply_text(
+            "🎡 **ЛЮБОВЬ, ВНИМАНИЕ!**\n\n"
+            "Колесо сейчас определит твой подарок...\n\n"
+            "🔥 **ПОЕХАЛИ!** 🔥",
+            parse_mode="Markdown",
+        )
 
-    await query.message.reply_animation(
-        animation=animation,
-        caption=(
-            "🎡 **КОЛЕСО ВРАЩАЕТСЯ...**\n\n"
-            "👀 Куда же оно остановится?"
-        ),
-        parse_mode="Markdown",
-    )
+        # ----------------------------------------------------
+        # Нужный подарок
+        # ----------------------------------------------------
 
-    # --------------------------------------------------------
-    # Ждём окончания анимации
-    # --------------------------------------------------------
+        target_index = GIFTS.index(
+            FORCED_GIFT
+        )
 
-    animation_time = (
-        GIF_DURATION * 105
-    ) / 1000
+        # ----------------------------------------------------
+        # ВАЖНО:
+        # создаём GIF в отдельном потоке,
+        # чтобы Telegram не зависал
+        # ----------------------------------------------------
 
-    await asyncio.sleep(
-        animation_time + 1.0
-    )
+        gif = await asyncio.to_thread(
+            create_spin_gif,
+            target_index
+        )
 
-    # --------------------------------------------------------
-    # Объявление результата
-    # --------------------------------------------------------
+        animation = InputFile(
+            gif,
+            filename="birthday_wheel.gif",
+        )
 
-    await query.message.reply_text(
-        "😱 **ОНО ОСТАНОВИЛОСЬ!**\n\n"
-        "🥁🥁🥁\n\n"
-        "✨ Сейчас узнаем, что тебе досталось...",
-        parse_mode="Markdown",
-    )
+        # ----------------------------------------------------
+        # Отправляем GIF
+        # ----------------------------------------------------
 
-    await asyncio.sleep(2)
+        await query.message.reply_animation(
+            animation=animation,
+            caption=(
+                "🎡 **КОЛЕСО ВРАЩАЕТСЯ...**\n\n"
+                "👀 Куда же оно остановится?"
+            ),
+            parse_mode="Markdown",
+        )
 
-    # --------------------------------------------------------
-    # Финальный подарок
-    # --------------------------------------------------------
+        # ----------------------------------------------------
+        # Ждём окончания
+        # ----------------------------------------------------
 
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "🎡 КРУТИТЬ ЕЩЁ РАЗ",
-                callback_data="spin",
-            )
+        animation_time = (
+            GIF_DURATION * GIF_FRAMES
+        ) / 1000
+
+        await asyncio.sleep(
+            animation_time + 1
+        )
+
+        # ----------------------------------------------------
+        # Напряжение
+        # ----------------------------------------------------
+
+        await query.message.reply_text(
+            "😱 **ОНО ОСТАНОВИЛОСЬ!**\n\n"
+            "🥁 🥁 🥁\n\n"
+            "✨ Сейчас узнаем, что тебе досталось...",
+            parse_mode="Markdown",
+        )
+
+        await asyncio.sleep(2)
+
+        # ----------------------------------------------------
+        # РЕЗУЛЬТАТ
+        # ----------------------------------------------------
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "🎡 КРУТИТЬ ЕЩЁ РАЗ",
+                    callback_data="spin",
+                )
+            ]
         ]
-    ]
 
-    reply_markup = InlineKeyboardMarkup(
-        keyboard
-    )
+        await query.message.reply_text(
+            "🎉✨🎊🥳🎁✨🎉\n\n"
+            "❤️ **ЛЮБОВЬ, ПОЗДРАВЛЯЕМ!** ❤️\n\n"
+            "🏆 Сегодня фортуна выбрала именно тебя!\n\n"
+            "🎁 **ТВОЙ ПОДАРОК:**\n\n"
+            "✈️ **НЕЗАБЫВАЕМОЕ\n"
+            "СОВМЕСТНОЕ ПУТЕШЕСТВИЕ** ❤️\n\n"
+            "🎉✨🎊🥳🎁✨🎉\n\n"
+            "С Днём рождения, Любовь! ❤️\n\n"
+            "Пусть этот подарок станет одним "
+            "из самых ярких воспоминаний! 🥰",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
 
-    await query.message.reply_text(
-        "🎉✨🎊🥳🎁✨🎉\n\n"
-        "❤️ **ЛЮБОВЬ, ПОЗДРАВЛЯЕМ!** ❤️\n\n"
-        "🏆 Сегодня фортуна выбрала именно тебя!\n\n"
-        "🎁 **ТВОЙ ПОДАРОК:**\n\n"
-        "✈️ **НЕЗАБЫВАЕМОЕ\n"
-        "СОВМЕСТНОЕ ПУТЕШЕСТВИЕ** ❤️\n\n"
-        "🎉✨🎊🥳🎁✨🎉\n\n"
-        "С Днём рождения, Любовь! ❤️\n\n"
-        "Пусть этот подарок станет одним "
-        "из самых ярких воспоминаний! 🥰",
-        parse_mode="Markdown",
-        reply_markup=reply_markup,
-    )
+    finally:
+
+        context.user_data["spinning"] = False
 
 
 # ============================================================
-# ЗАПУСК БОТА
+# ЗАПУСК
 # ============================================================
 
 def main():
 
+    # Увеличиваем таймауты Telegram API
+    request = HTTPXRequest(
+        connect_timeout=30,
+        read_timeout=60,
+        write_timeout=60,
+        pool_timeout=30,
+    )
+
     app = (
         Application.builder()
         .token(TOKEN)
+        .request(request)
         .build()
     )
 
